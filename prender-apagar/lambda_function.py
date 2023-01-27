@@ -9,7 +9,7 @@ def lambda_handler(event, context):
 
     if mode == "prender":
         try:
-            ec2.start_instances(InstanceIds=["i-0797b66ef1daa1635"], DryRun=True)
+            ec2.start_instances(InstanceIds=["i-0797b66ef1daa1635"])
             rds.start_db_instance(DBInstanceIdentifier="bne")
         except:
             print("Error prendiendo")
