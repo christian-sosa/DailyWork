@@ -4,7 +4,7 @@ import os
 import awswrangler as wr
 import pandas as pd
 
-# print(os.getenv("AWS_PROFILE"))
+print(os.getenv("PASSWORD"))
 
 # print(os.getenv("AMBIENTE"))
 
@@ -22,7 +22,7 @@ mydict = [
 ]
 df = pd.DataFrame(mydict)
 
-print(df.a.str.split("_").str[0])
+# print(df.a.str.split("_").str[0])
 
 # read = wr.s3.read_csv('s3://csosa-backup/SIP_221006_E.csv')
 # print(read)
