@@ -108,8 +108,11 @@ def fact_resumen_financiero(year):
         df_merge.projectcode.str.startswith("FR"), "is_project"
     ] = "Fondo Regional"
     df_merge.loc[
-        df_merge.projectcode.str.startswith(("FN", "FRN")), "is_project"
+        df_merge.projectcode.str.startswith("FN"), "is_project"
     ] = "Proyecto impacto"
+    df_merge.loc[
+        df_merge.projectcode.str.startswith("FRN"), "is_project"
+    ] = "Fondo Regional/Proyecto impacto"
 
     df_merge.rename(columns={"accountcode": "id"}, inplace=True)
     df = df_merge[
