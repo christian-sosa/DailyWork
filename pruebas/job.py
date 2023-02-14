@@ -61,7 +61,9 @@ raw = CCHC_DW_BUCKETS[AMBIENTE]["raw"]
 def dim_bne_empresas():
     args["tabla"] = "dim_bne_empresas"
     empresas_df = spark.read.parquet("s3://cchc-dw-qa-staging/" + "bne/empresas")
-    # actividad_emps_df = spark.read.parquet(staging + "bne/actividad_empresas")
+    actividad_emps_df = spark.read.parquet(
+        "s3://cchc-dw-qa-staging/" + "bne/actividad_empresas"
+    )
     ignorar = spark.read.parquet(
         "s3://cchc-dw-qa-staging/" + "bne/empresas_no_considerar"
     )
@@ -74,6 +76,12 @@ def dim_bne_empresas():
         "s3://cchc-dw-dev-raw/" + "bne/bne_usuarios_empresas_v2"
     )
 
+    cantidad_cvs_ae = actividad_emps_df.groupBy("rut").agg(
+        f.sum("persona_lista").alias("persona_lista")
+    )
+
+    print("actividad empresas")
+    print(cantidad_cvs_ae.columns)
     nomina_empresas = nomina_empresas.select(
         "rut",
         "numero_de_trabajadores_dependientes_informados",
@@ -90,7 +98,12 @@ def dim_bne_empresas():
 
     empresas_df = empresas_df.where("estado = 1")
     ignorar = ignorar.withColumn("ignorar", f.lit(True)).select("rut", "ignorar")
+
+    print("ignorar")
+    print(ignorar.columns)
     df = empresas_df.join(ignorar, "rut", "left")
+
+    df = df.join(cantidad_cvs_ae, "rut", "left")
 
     bne_usuarios_empresas_agg = bne_usuarios_empresas.groupBy("rut").agg(
         f.sum("vistas_cv").alias("cv_vistos"),
@@ -113,6 +126,9 @@ def dim_bne_empresas():
     """,
     )
 
+    print("bne_usuarios_empresas_agg")
+    print(bne_usuarios_empresas_agg.columns)
+
     df = df.join(bne_usuarios_empresas_agg, "rut", "left")
 
     df = df.drop("ultima_actividad", "difference")
@@ -126,10 +142,24 @@ def dim_bne_empresas():
         .withColumn("rut", regexp_replace("rut", "\\-", ""))
     )
 
+    print("socios_unicos")
+    print(socios_unicos.columns)
+
     df = df.join(socios_unicos, "rut", "left")
+
+    df = df.selectExpr(
+        "*",
+        """
+        CASE 
+            WHEN (cv_vistos > 0 or numero_cv_descargados > 0 or persona_lista > 0) and estado = 1 and ignorar is null THEN true
+            ELSE false
+        END as uso
+    """,
+    )
 
     df = df.fillna(
         {
+            "persona_lista": 0,
             "status": "INACTIVO",
             "numero_cv_descargados": 0,
             "cv_vistos": 0,
@@ -181,10 +211,22 @@ def dim_bne_empresas():
         )
     )
 
+    print("geografia")
+    print(geografia.columns)
+
     df = df.withColumn("rut", f.upper(f.col("rut")))
 
+    print("nomina_empresas")
+    print(nomina_empresas.columns)
     df = df.join(nomina_empresas, "rut", "left")
 
+    print("df")
+    print(df.columns)
+
+    df = df.drop("comuna_ascii", "day")
+
+    print("df")
+    print(df.columns)
     escribirCatalogoWrapper(df, analytics + args["tabla"], args, sc)
     count = df.count()
     insertarConteoWrapper(count, args)
@@ -192,16 +234,14 @@ def dim_bne_empresas():
 
 def bne_trabajadores():
     args["tabla"] = "bne_trabajadores"
-    ruta_trabajadores = CCHC_DW_BUCKETS[ambiente]["staging"] + "bne/trabajadores/"
+    ruta_trabajadores = "s3://cchc-dw-qa-staging/" + "bne/trabajadores/"
     ruta_normalizador_especialidades = (
-        CCHC_DW_BUCKETS[ambiente]["staging"] + "bne/normalizador_especialidad"
+        "s3://cchc-dw-qa-staging/" + "bne/normalizador_especialidad"
     )
-    ruta_normalizador_oficio = (
-        CCHC_DW_BUCKETS[ambiente]["staging"] + "bne/normalizador_oficio"
-    )
-    ruta_cesantes = CCHC_DW_BUCKETS[ambiente]["staging"] + "bne/cesantes"
+    ruta_normalizador_oficio = "s3://cchc-dw-qa-staging/" + "bne/normalizador_oficio"
+    ruta_cesantes = "s3://cchc-dw-qa-staging/" + "bne/cesantes"
 
-    ruta_salida = CCHC_DW_BUCKETS[ambiente]["analytics"] + "bne_trabajadores"
+    ruta_salida = "s3://cchc-dw-dev-analytics/" + "bne_trabajadores"
 
     print(
         "leyendo desde "
@@ -310,9 +350,7 @@ def bne_trabajadores():
     df = df.fillna({"especialidad": "Sin Información"})
 
     # Agregar cámara a la que corresponde la persona mediante la tabla bne geografía
-    geo = spark.read.parquet(
-        CCHC_DW_BUCKETS[ambiente]["analytics"] + "geografia_variaciones"
-    )
+    geo = spark.read.parquet("s3://cchc-dw-qa-analytics/" + "geografia_variaciones")
     comunas_df = (
         geo.select("idconecta", "comuna")
         .withColumnRenamed("idconecta", "id_camara_regional")
@@ -393,7 +431,7 @@ def bne_normalizador_especialidades():
 
 
 dim_bne_empresas()
-# bne_trabajadores()
+bne_trabajadores()
 # bne_cesantes()
 # bne_normalizador_especialidades()
 # bne_normalizador_oficio()
