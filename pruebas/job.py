@@ -60,15 +60,19 @@ raw = CCHC_DW_BUCKETS[AMBIENTE]["raw"]
 
 def dim_bne_empresas():
     args["tabla"] = "dim_bne_empresas"
-    empresas_df = spark.read.parquet(staging + "bne/empresas")
+    empresas_df = spark.read.parquet("s3://cchc-dw-qa-staging/" + "bne/empresas")
     # actividad_emps_df = spark.read.parquet(staging + "bne/actividad_empresas")
-    ignorar = spark.read.parquet(staging + "bne/empresas_no_considerar")
-    # cvs_vistos = spark.read.parquet(staging + "bne/cv_vistos")
-    dim_socios = spark.read.parquet(analytics + "dim_socios")
-    nomina_empresas = spark.read.parquet(
-        staging + "sii/nomina_empresas/commercial_year=2021/"
+    ignorar = spark.read.parquet(
+        "s3://cchc-dw-qa-staging/" + "bne/empresas_no_considerar"
     )
-    bne_usuarios_empresas = spark.read.parquet(raw + "bne/bne_usuarios_empresas_v2")
+    # cvs_vistos = spark.read.parquet(staging + "bne/cv_vistos")
+    dim_socios = spark.read.parquet("s3://cchc-dw-qa-analytics/" + "dim_socios")
+    nomina_empresas = spark.read.parquet(
+        "s3://cchc-dw-qa-staging/" + "sii/nomina_empresas/commercial_year=2021/"
+    )
+    bne_usuarios_empresas = spark.read.parquet(
+        "s3://cchc-dw-dev-raw/" + "bne/bne_usuarios_empresas_v2"
+    )
 
     nomina_empresas = nomina_empresas.select(
         "rut",
@@ -97,25 +101,22 @@ def dim_bne_empresas():
     bne_usuarios_empresas_agg = bne_usuarios_empresas_agg.withColumn(
         "difference", f.datediff(f.current_date(), f.col("ultima_actividad"))
     ).withColumn("difference", f.col("difference").cast("int"))
-    print("1")
-    bne_usuarios_empresas_agg.show()
+
     bne_usuarios_empresas_agg = bne_usuarios_empresas_agg.selectExpr(
         "*",
         """
         CASE 
-            WHEN (difference < 61) and (difference > 30) THEN 'CASIINACTIVO'
-            WHEN difference < 31 THEN 'ACTIVO
+            WHEN (difference < 61) and (difference > 30) THEN 'CASI INACTIVO'
+            WHEN difference < 31 THEN 'ACTIVO'
             ELSE 'INACTIVO'
         END as status
     """,
     )
-    bne_usuarios_empresas_agg.show()
-    print("2")
+
     df = df.join(bne_usuarios_empresas_agg, "rut", "left")
 
-    print("3")
+    df = df.drop("ultima_actividad", "difference")
 
-    """
     socios_unicos = (
         dim_socios.where("ESTADO = 'ACTIVO'")
         .dropDuplicates(["RUT"])
@@ -127,10 +128,9 @@ def dim_bne_empresas():
 
     df = df.join(socios_unicos, "rut", "left")
 
-
     df = df.fillna(
         {
-            "persona_lista": 0,
+            "status": "INACTIVO",
             "numero_cv_descargados": 0,
             "cv_vistos": 0,
             "socio": 0,
@@ -163,7 +163,7 @@ def dim_bne_empresas():
     df = df.where("ignorar = false")
 
     geografia = (
-        spark.read.parquet(analytics + "geografia_variaciones")
+        spark.read.parquet("s3://cchc-dw-qa-analytics/" + "geografia_variaciones")
         .withColumn("comuna_ascii", convertir_ascii("comuna"))
         .select("idconecta", "comuna_ascii")
         .withColumnRenamed("idconecta", "id_camara")
@@ -188,7 +188,6 @@ def dim_bne_empresas():
     escribirCatalogoWrapper(df, analytics + args["tabla"], args, sc)
     count = df.count()
     insertarConteoWrapper(count, args)
-    """
 
 
 def bne_trabajadores():
