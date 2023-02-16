@@ -56,32 +56,27 @@ JOB_ID = args["uuid"]
 staging = CCHC_DW_BUCKETS[AMBIENTE]["staging"]
 analytics = CCHC_DW_BUCKETS[AMBIENTE]["analytics"]
 raw = CCHC_DW_BUCKETS[AMBIENTE]["raw"]
+### SE CAMBIAN LAS RUTAS Y SE DEJA TODOO PARA PASAR A AL REPO , REVISAR RUTA DE ESCRITURA
+staging = "s3://cchc-dw-qa-staging/"
+analytics = "s3://cchc-dw-qa-analytics/"
+raw = "s3://cchc-dw-dev-raw/"
 
 
 def dim_bne_empresas():
     args["tabla"] = "dim_bne_empresas"
-    empresas_df = spark.read.parquet("s3://cchc-dw-qa-staging/" + "bne/empresas")
-    actividad_emps_df = spark.read.parquet(
-        "s3://cchc-dw-qa-staging/" + "bne/actividad_empresas"
-    )
-    ignorar = spark.read.parquet(
-        "s3://cchc-dw-qa-staging/" + "bne/empresas_no_considerar"
-    )
-    # cvs_vistos = spark.read.parquet(staging + "bne/cv_vistos")
-    dim_socios = spark.read.parquet("s3://cchc-dw-qa-analytics/" + "dim_socios")
+    empresas_df = spark.read.parquet(staging + "bne/empresas")
+    actividad_emps_df = spark.read.parquet(staging + "bne/actividad_empresas")
+    ignorar = spark.read.parquet(staging + "bne/empresas_no_considerar")
+    dim_socios = spark.read.parquet(analytics + "dim_socios")
     nomina_empresas = spark.read.parquet(
-        "s3://cchc-dw-qa-staging/" + "sii/nomina_empresas/commercial_year=2021/"
+        staging + "sii/nomina_empresas/commercial_year=2021/"
     )
-    bne_usuarios_empresas = spark.read.parquet(
-        "s3://cchc-dw-dev-raw/" + "bne/bne_usuarios_empresas_v2"
-    )
+    bne_usuarios_empresas = spark.read.parquet(raw + "bne/bne_usuarios_empresas_v2")
 
     cantidad_cvs_ae = actividad_emps_df.groupBy("rut").agg(
         f.sum("persona_lista").alias("persona_lista")
     )
 
-    print("actividad empresas")
-    print(cantidad_cvs_ae.columns)
     nomina_empresas = nomina_empresas.select(
         "rut",
         "numero_de_trabajadores_dependientes_informados",
@@ -99,8 +94,6 @@ def dim_bne_empresas():
     empresas_df = empresas_df.where("estado = 1")
     ignorar = ignorar.withColumn("ignorar", f.lit(True)).select("rut", "ignorar")
 
-    print("ignorar")
-    print(ignorar.columns)
     df = empresas_df.join(ignorar, "rut", "left")
 
     df = df.join(cantidad_cvs_ae, "rut", "left")
@@ -126,9 +119,6 @@ def dim_bne_empresas():
     """,
     )
 
-    print("bne_usuarios_empresas_agg")
-    print(bne_usuarios_empresas_agg.columns)
-
     df = df.join(bne_usuarios_empresas_agg, "rut", "left")
 
     df = df.drop("ultima_actividad", "difference")
@@ -141,9 +131,6 @@ def dim_bne_empresas():
         .withColumnRenamed("RUT", "rut")
         .withColumn("rut", regexp_replace("rut", "\\-", ""))
     )
-
-    print("socios_unicos")
-    print(socios_unicos.columns)
 
     df = df.join(socios_unicos, "rut", "left")
 
@@ -193,7 +180,7 @@ def dim_bne_empresas():
     df = df.where("ignorar = false")
 
     geografia = (
-        spark.read.parquet("s3://cchc-dw-qa-analytics/" + "geografia_variaciones")
+        spark.read.parquet(analytics + "geografia_variaciones")
         .withColumn("comuna_ascii", convertir_ascii("comuna"))
         .select("idconecta", "comuna_ascii")
         .withColumnRenamed("idconecta", "id_camara")
@@ -211,22 +198,10 @@ def dim_bne_empresas():
         )
     )
 
-    print("geografia")
-    print(geografia.columns)
-
     df = df.withColumn("rut", f.upper(f.col("rut")))
-
-    print("nomina_empresas")
-    print(nomina_empresas.columns)
     df = df.join(nomina_empresas, "rut", "left")
-
-    print("df")
-    print(df.columns)
-
     df = df.drop("comuna_ascii", "day")
 
-    print("df")
-    print(df.columns)
     escribirCatalogoWrapper(df, analytics + args["tabla"], args, sc)
     count = df.count()
     insertarConteoWrapper(count, args)
@@ -234,14 +209,12 @@ def dim_bne_empresas():
 
 def bne_trabajadores():
     args["tabla"] = "bne_trabajadores"
-    ruta_trabajadores = "s3://cchc-dw-qa-staging/" + "bne/trabajadores/"
-    ruta_normalizador_especialidades = (
-        "s3://cchc-dw-qa-staging/" + "bne/normalizador_especialidad"
-    )
-    ruta_normalizador_oficio = "s3://cchc-dw-qa-staging/" + "bne/normalizador_oficio"
-    ruta_cesantes = "s3://cchc-dw-qa-staging/" + "bne/cesantes"
+    ruta_trabajadores = staging + "bne/trabajadores/"
+    ruta_normalizador_especialidades = staging + "bne/normalizador_especialidad"
+    ruta_normalizador_oficio = staging + "bne/normalizador_oficio"
+    ruta_cesantes = staging + "bne/cesantes"
 
-    ruta_salida = "s3://cchc-dw-dev-analytics/" + "bne_trabajadores"
+    ruta_salida = analytics + "bne_trabajadores"
 
     print(
         "leyendo desde "
@@ -350,7 +323,7 @@ def bne_trabajadores():
     df = df.fillna({"especialidad": "Sin Información"})
 
     # Agregar cámara a la que corresponde la persona mediante la tabla bne geografía
-    geo = spark.read.parquet("s3://cchc-dw-qa-analytics/" + "geografia_variaciones")
+    geo = spark.read.parquet(analytics + "geografia_variaciones")
     comunas_df = (
         geo.select("idconecta", "comuna")
         .withColumnRenamed("idconecta", "id_camara_regional")
