@@ -56,10 +56,6 @@ JOB_ID = args["uuid"]
 staging = CCHC_DW_BUCKETS[AMBIENTE]["staging"]
 analytics = CCHC_DW_BUCKETS[AMBIENTE]["analytics"]
 raw = CCHC_DW_BUCKETS[AMBIENTE]["raw"]
-### SE CAMBIAN LAS RUTAS Y SE DEJA TODOO PARA PASAR A AL REPO , REVISAR RUTA DE ESCRITURA
-staging = "s3://cchc-dw-qa-staging/"
-analytics = "s3://cchc-dw-qa-analytics/"
-raw = "s3://cchc-dw-dev-raw/"
 
 
 def dim_bne_empresas():
@@ -405,8 +401,8 @@ def bne_normalizador_especialidades():
 
 dim_bne_empresas()
 bne_trabajadores()
-# bne_cesantes()
-# bne_normalizador_especialidades()
-# bne_normalizador_oficio()
-# bne_registros_empresa()
-# bne_registros_persona()
+bne_cesantes()
+bne_normalizador_especialidades()
+bne_normalizador_oficio()
+bne_registros_empresa()
+bne_registros_persona()
