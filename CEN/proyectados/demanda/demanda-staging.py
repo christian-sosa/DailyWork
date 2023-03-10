@@ -62,8 +62,8 @@ def lambda_handler(event, context):
                 },
             )
 
-            df["year"] = dest[2]
             dest = object_summary.key.split("/")[:-1]
+            df["year"] = dest[2]
             table = dest[3]
             pathDest = f"s3://{bucketStaging}/{dest[0]}/{dest[1]}/{table}/"
             print(pathDest)

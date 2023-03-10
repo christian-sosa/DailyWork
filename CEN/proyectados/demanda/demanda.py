@@ -40,9 +40,6 @@ def lambda_handler(event, context):
     print(ruta_origen_medio)
     print(ruta_origen_alto)
 
-    today = dt.date.today()
-    year = today.strftime("%Y")
-
     df_medio = wr.s3.read_parquet(ruta_origen_medio)
     df_alto = wr.s3.read_parquet(ruta_origen_alto)
 
