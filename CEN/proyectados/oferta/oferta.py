@@ -2,23 +2,7 @@ import boto3
 import os
 import json
 import awswrangler as wr
-import datetime
-
-# Funcion para escritura del dataframe:
-def df_write(df, dest, ext, element, write_mode, database):
-    if ext == "parquet":
-        wr.s3.to_parquet(
-            df=df,
-            path=dest,
-            index=False,
-            dataset=True,
-            database=database,
-            table=element,
-            compression="gzip",
-            mode=write_mode,
-            partition_cols=["year"],
-        )
-
+import datetime as dt
 
 # Función que agrega columnas de año, mes y día a partir de una columna de fecha.
 def add_partition_fields(df, formato="%Y", col="ano"):
@@ -58,12 +42,9 @@ def lambda_handler(event, context):
     database = data_params.get("database_analytics")
     # Ruta de origen del archivo a leer:
     S3_origin = data_params.get("S3_origin_analytics")
+    S3_origin = S3_origin + "year=" + str(dt.datetime.now().year - 2) + "/"
     # Ruta de destino del archivo a escribir:
     S3_dest = data_params.get("S3_dest_analytics")
-    # Extension del archivo a leer
-    format_in = data_params.get("format_in")
-    # Extension del archivo a escribir
-    format_out = data_params.get("format_out")
     # Tipo de escritura: (overwrite_partitions, overwrite, append)
     write_mode = data_params.get("write_mode")
     # FACT
@@ -75,54 +56,62 @@ def lambda_handler(event, context):
     # ----------------------------------------------------------------------------------------------------------------
     #                                      Principal
     # ----------------------------------------------------------------------------------------------------------------
-    try:
-        df1 = df_read(S3_origin, format_in)
-        df1 = df_tasks(df1, tasks)
+    df1 = wr.s3.read_parquet(S3_origin)
+    df1 = df_tasks(df1, tasks)
 
-        df2 = df1["escenario"]
-        df2.drop_duplicates(inplace=True)
-        dict = df2.to_dict()
-        escenarios = list(dict.values())
+    df2 = df1["escenario"]
+    df2.drop_duplicates(inplace=True)
+    dict = df2.to_dict()
+    escenarios = list(dict.values())
 
-        df3 = df1["region"]
-        df3.drop_duplicates(inplace=True)
-        dict = df3.to_dict()
-        regiones = list(dict.values())
+    df3 = df1["region"]
+    df3.drop_duplicates(inplace=True)
+    dict = df3.to_dict()
+    regiones = list(dict.values())
 
-        df4 = df1["tecnologia"]
-        df4.drop_duplicates(inplace=True)
-        dict = df4.to_dict()
-        tecnologias = list(dict.values())
-        print(tecnologias)
+    df4 = df1["tecnologia"]
+    df4.drop_duplicates(inplace=True)
+    dict = df4.to_dict()
+    tecnologias = list(dict.values())
+    print(tecnologias)
 
-        df5 = df1["ano"]
-        df5.drop_duplicates(inplace=True)
-        anho_min = df5.min()
-        anho_max = df5.max()
+    df5 = df1["ano"]
+    df5.drop_duplicates(inplace=True)
+    anho_min = df5.min()
+    anho_max = df5.max()
 
-        for i in escenarios:
-            for x in regiones:
-                for y in tecnologias:
-                    for anho in range(anho_min, anho_max + 1):
+    for i in escenarios:
+        for x in regiones:
+            for y in tecnologias:
+                for anho in range(anho_min, anho_max + 1):
 
-                        if df1.loc[
-                            (df1["escenario"] == i)
-                            & (df1["region"] == x)
-                            & (df1["tecnologia"] == y)
-                            & (df1["ano"] == anho)
-                        ].empty:
-                            new_row = {
-                                "escenario": i,
-                                "region": x,
-                                "tecnologia": y,
-                                "potencia": 0,
-                                "ano": anho,
-                            }
-                            df1 = df1.append(new_row, ignore_index=True)
-        df1 = df1.groupby(
-            ["escenario", "region", "tecnologia", "ano"], as_index=False
-        ).sum()
-        df2 = add_partition_fields(df1)
-        df_write(df2, S3_dest, format_out, element, write_mode, database)
-    except:
-        print("Ocurrió un error durante la ejecucion")
+                    if df1.loc[
+                        (df1["escenario"] == i)
+                        & (df1["region"] == x)
+                        & (df1["tecnologia"] == y)
+                        & (df1["ano"] == anho)
+                    ].empty:
+                        new_row = {
+                            "escenario": i,
+                            "region": x,
+                            "tecnologia": y,
+                            "potencia": 0,
+                            "ano": anho,
+                        }
+                        df1 = df1.append(new_row, ignore_index=True)
+    df1 = df1.groupby(
+        ["escenario", "region", "tecnologia", "ano"], as_index=False
+    ).sum()
+    df2 = add_partition_fields(df1)
+    df2["yearParticion"] = str(dt.datetime.now().year - 2)
+    wr.s3.to_parquet(
+        df=df2,
+        path=S3_dest,
+        index=False,
+        dataset=True,
+        database=database,
+        table=element,
+        compression="gzip",
+        mode=write_mode,
+        partition_cols=["yearParticion", "year"],
+    )
